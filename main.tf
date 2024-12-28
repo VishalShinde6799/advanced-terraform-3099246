@@ -1,125 +1,134 @@
-### PROVIDER
-provider "google" {
-  project = "advancedterraform" #replace this with your project-id
-  region  = "us-central1"
-  zone    = "us-central1-a"
+provider "azurerm" {
+  features {}
+  subscription_id = var.subscriptionID
+  tenant_id       = var.tenantID
 }
 
-### NETWORK
-data "google_compute_network" "default" {
-  name                    = "default"
-}
 
-## SUBNET
-resource "google_compute_subnetwork" "subnet-1" {
-  name                     = "subnet1"
-  ip_cidr_range            = "10.127.0.0/20"
-  network                  = data.google_compute_network.default.self_link
-  region                   = "us-central1"
-  private_ip_google_access = true
-}
+resource "azurerm_resource_group" "dev-rg" {
+  name     = "eastus2-dev-rg"
+  location = "East US"
 
-resource "google_compute_firewall" "default" {
-  name    = "test-firewall"
-  network = data.google_compute_network.default.self_link
-
-  allow {
-    protocol = "icmp"
-  }
-
-  allow {
-    protocol = "tcp"
-    ports    = ["80", "8080", "1000-2000", "22"]
-  }
-
-  source_tags = ["web"]
-}
-
-### COMPUTE
-## NGINX PROXY
-resource "google_compute_instance" "nginx_instance" {
-  name         = "nginx-proxy"
-  machine_type = "f1-micro"
-  tags = ["web"]
-  
-  boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-11"
-    }
-  }
-
-  network_interface {
-    network = data.google_compute_network.default.self_link
-    subnetwork = google_compute_subnetwork.subnet-1.self_link
-    access_config {
-      
-    }
+  tags = {
+    environment = "dev"
   }
 }
 
-## WEB1
-resource "google_compute_instance" "web1" {
-  name         = "web1"
-  machine_type = "f1-micro"
-  
-  boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-11"
-    }
-  }
+resource "azurerm_virtual_network" "dev-vnet" {
+  name                = "eastus2-dev-vnet"
+  resource_group_name = azurerm_resource_group.dev-rg.name
+  location            = azurerm_resource_group.dev-rg.location
+  address_space       = ["10.123.0.0/16"]
 
-  network_interface {
-    # A default network is created for all GCP projects
-    network = data.google_compute_network.default.self_link
-    subnetwork = google_compute_subnetwork.subnet-1.self_link
+  tags = {
+    environment = "dev"
   }
 }
-## WEB2
-resource "google_compute_instance" "web2" {
-  name         = "web2"
-  machine_type = "f1-micro"
-  
-  boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-11"
-    }
-  }
 
-  network_interface {
-    network = data.google_compute_network.default.self_link
-    subnetwork = google_compute_subnetwork.subnet-1.self_link
-  }
-}
-## WEB3
-resource "google_compute_instance" "web3" {
-  name         = "web3"
-  machine_type = "f1-micro"
-  
-  boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-11"
-    }
-  }
-
-  network_interface {
-    network = data.google_compute_network.default.self_link
-    subnetwork = google_compute_subnetwork.subnet-1.self_link
-  }  
+resource "azurerm_subnet" "dev-subnet1" {
+  name                 = "eastus2-dev-subnet1"
+  resource_group_name  = azurerm_resource_group.dev-rg.name
+  virtual_network_name = azurerm_virtual_network.dev-vnet.name
+  address_prefixes     = ["10.123.0.0/24"]
 }
 
-## DB
-resource "google_compute_instance" "mysqldb" {
-  name         = "mysqldb"
-  machine_type = "f1-micro"
-  
-  boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-11"
-    }
+resource "azurerm_network_security_group" "dev-subnet1-nsg" {
+  name                = "eastus2-dev-subnet1-nsg1"
+  resource_group_name = azurerm_resource_group.dev-rg.name
+  location            = azurerm_resource_group.dev-rg.location
+
+  tags = {
+    environment = "dev"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "dev-subnet1-nsg-association" {
+  subnet_id                 = azurerm_subnet.dev-subnet1.id
+  network_security_group_id = azurerm_network_security_group.dev-subnet1-nsg.id
+}
+
+resource "azurerm_public_ip" "dev-pip1" {
+  name                = "eastus2-dev-pip1"
+  resource_group_name = azurerm_resource_group.dev-rg.name
+  location            = azurerm_resource_group.dev-rg.location
+  allocation_method   = "Dynamic"
+  sku                 = "Basic"
+
+  tags = {
+    environment = "dev"
+  }
+}
+
+resource "azurerm_network_interface" "dev-nic1" {
+  name                = "eastus2-dev-nic1"
+  location            = azurerm_resource_group.dev-rg.location
+  resource_group_name = azurerm_resource_group.dev-rg.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.dev-subnet1.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.dev-pip1.id
   }
 
-  network_interface {
-    network = data.google_compute_network.default.self_link
-    subnetwork = google_compute_subnetwork.subnet-1.self_link
-  }  
+  tags = {
+    environment = "dev"
+  }
+}
+
+resource "azurerm_linux_virtual_machine" "dev-linux-vm1" {
+  name                = "eastus2-dev-linux-vm1"
+  resource_group_name = azurerm_resource_group.dev-rg.name
+  location            = azurerm_resource_group.dev-rg.location
+  size                = "Standard_F2"
+  admin_username      = "vshinde"
+  network_interface_ids = [
+    azurerm_network_interface.dev-nic1.id
+  ]
+
+  admin_ssh_key {
+    username   = "vshinde"
+    public_key = file("~/.ssh/azure_key.pub")
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts"
+    version   = "latest"
+  }
+
+  tags = {
+    environment = "dev"
+  }
+}
+
+data "azurerm_public_ip" "dev-pip1-data" {
+  name                = azurerm_public_ip.dev-pip1.name
+  resource_group_name = azurerm_resource_group.dev-rg.name
+}
+
+data "azurerm_subnet" "dev-subnet1-data" {
+  name                 = azurerm_subnet.dev-subnet1.name
+  virtual_network_name = azurerm_virtual_network.dev-vnet.name
+  resource_group_name  = azurerm_resource_group.dev-rg.name
+}
+
+resource "azurerm_network_security_rule" "example" {
+  name                         = "allow-${azurerm_linux_virtual_machine.dev-linux-vm1.name}-ssh"
+  priority                     = 100
+  direction                    = "Inbound"
+  access                       = "Allow"
+  protocol                     = "*"
+  source_port_range            = "*"
+  destination_port_range       = "22"
+  source_address_prefix        = "*"
+  destination_address_prefixes = data.azurerm_subnet.dev-subnet1-data.address_prefixes
+  resource_group_name          = azurerm_resource_group.dev-rg.name
+  network_security_group_name  = azurerm_network_security_group.dev-subnet1-nsg.name
 }
