@@ -5,85 +5,85 @@ provider "azurerm" {
 }
 
 
-resource "azurerm_resource_group" "dev-rg" {
-  name     = "eastus2-dev-rg"
+resource "azurerm_resource_group" "resource-group" {
+  name     = "${var.location}-${var.environment_name_map[var.target_environment]}-rg"
   location = "East US"
 
   tags = {
-    environment = "dev"
+    environment = var.environment_name_map[var.target_environment]
   }
 }
 
-resource "azurerm_virtual_network" "dev-vnet" {
-  name                = "eastus2-dev-vnet"
-  resource_group_name = azurerm_resource_group.dev-rg.name
-  location            = azurerm_resource_group.dev-rg.location
-  address_space       = ["10.123.0.0/16"]
+resource "azurerm_virtual_network" "vnet" {
+  name                = "${var.location}-${var.environment_name_map[var.target_environment]}-vnet"
+  resource_group_name = azurerm_resource_group.resource-group.name
+  location            = azurerm_resource_group.resource-group.location
+  address_space       = [var.environmet_vnet_cidr_map[var.target_environment]]
 
   tags = {
-    environment = "dev"
+    environment = var.environment_name_map[var.target_environment]
   }
 }
 
-resource "azurerm_subnet" "dev-subnet1" {
-  name                 = "eastus2-dev-subnet1"
-  resource_group_name  = azurerm_resource_group.dev-rg.name
-  virtual_network_name = azurerm_virtual_network.dev-vnet.name
-  address_prefixes     = ["10.123.0.0/24"]
+resource "azurerm_subnet" "subnet" {
+  name                 = "${var.location}-${var.environment_name_map[var.target_environment]}-subnet"
+  resource_group_name  = azurerm_resource_group.resource-group.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = [var.environment_subnet_cidr_map[var.target_environment]]
 }
 
-resource "azurerm_network_security_group" "dev-subnet1-nsg" {
-  name                = "eastus2-dev-subnet1-nsg1"
-  resource_group_name = azurerm_resource_group.dev-rg.name
-  location            = azurerm_resource_group.dev-rg.location
+resource "azurerm_network_security_group" "subnet-nsg" {
+  name                = "${var.location}-${var.environment_name_map[var.target_environment]}-subnet-nsg1"
+  resource_group_name = azurerm_resource_group.resource-group.name
+  location            = azurerm_resource_group.resource-group.location
 
   tags = {
-    environment = "dev"
+    environment = var.environment_name_map[var.target_environment]
   }
 }
 
-resource "azurerm_subnet_network_security_group_association" "dev-subnet1-nsg-association" {
-  subnet_id                 = azurerm_subnet.dev-subnet1.id
-  network_security_group_id = azurerm_network_security_group.dev-subnet1-nsg.id
+resource "azurerm_subnet_network_security_group_association" "subnet-nsg-association" {
+  subnet_id                 = azurerm_subnet.subnet.id
+  network_security_group_id = azurerm_network_security_group.subnet-nsg.id
 }
 
-resource "azurerm_public_ip" "dev-pip1" {
-  name                = "eastus2-dev-pip1"
-  resource_group_name = azurerm_resource_group.dev-rg.name
-  location            = azurerm_resource_group.dev-rg.location
+resource "azurerm_public_ip" "public-ip" {
+  name                = "${var.location}-${var.environment_name_map[var.target_environment]}-public-ip"
+  resource_group_name = azurerm_resource_group.resource-group.name
+  location            = azurerm_resource_group.resource-group.location
   allocation_method   = "Dynamic"
   sku                 = "Basic"
 
   tags = {
-    environment = "dev"
+    environment = var.environment_name_map[var.target_environment]
   }
 }
 
-resource "azurerm_network_interface" "dev-nic1" {
-  name                = "eastus2-dev-nic1"
-  location            = azurerm_resource_group.dev-rg.location
-  resource_group_name = azurerm_resource_group.dev-rg.name
+resource "azurerm_network_interface" "net-interface-card" {
+  name                = "${var.location}-${var.environment_name_map[var.target_environment]}-net-interface-card"
+  location            = azurerm_resource_group.resource-group.location
+  resource_group_name = azurerm_resource_group.resource-group.name
 
   ip_configuration {
     name                          = "internal"
-    subnet_id                     = azurerm_subnet.dev-subnet1.id
+    subnet_id                     = azurerm_subnet.subnet.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.dev-pip1.id
+    public_ip_address_id          = azurerm_public_ip.public-ip.id
   }
 
   tags = {
-    environment = "dev"
+    environment = var.environment_name_map[var.target_environment]
   }
 }
 
-resource "azurerm_linux_virtual_machine" "dev-linux-vm1" {
-  name                = "eastus2-dev-linux-vm1"
-  resource_group_name = azurerm_resource_group.dev-rg.name
-  location            = azurerm_resource_group.dev-rg.location
-  size                = "Standard_F2"
+resource "azurerm_linux_virtual_machine" "linux-vm" {
+  name                = "${var.location}-${var.environment_name_map[var.target_environment]}-linux-vm"
+  resource_group_name = azurerm_resource_group.resource-group.name
+  location            = azurerm_resource_group.resource-group.location
+  size                = var.environment_vm_sku_map[var.target_environment]
   admin_username      = "vshinde"
   network_interface_ids = [
-    azurerm_network_interface.dev-nic1.id
+    azurerm_network_interface.net-interface-card.id
   ]
 
   admin_ssh_key {
@@ -104,23 +104,23 @@ resource "azurerm_linux_virtual_machine" "dev-linux-vm1" {
   }
 
   tags = {
-    environment = "dev"
+    environment = var.environment_name_map[var.target_environment]
   }
 }
 
-data "azurerm_public_ip" "dev-pip1-data" {
-  name                = azurerm_public_ip.dev-pip1.name
-  resource_group_name = azurerm_resource_group.dev-rg.name
+data "azurerm_public_ip" "public-ip-data" {
+  name                = azurerm_public_ip.public-ip.name
+  resource_group_name = azurerm_resource_group.resource-group.name
 }
 
-data "azurerm_subnet" "dev-subnet1-data" {
-  name                 = azurerm_subnet.dev-subnet1.name
-  virtual_network_name = azurerm_virtual_network.dev-vnet.name
-  resource_group_name  = azurerm_resource_group.dev-rg.name
+data "azurerm_subnet" "subnet-data" {
+  name                 = azurerm_subnet.subnet.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  resource_group_name  = azurerm_resource_group.resource-group.name
 }
 
 resource "azurerm_network_security_rule" "example" {
-  name                         = "allow-${azurerm_linux_virtual_machine.dev-linux-vm1.name}-ssh"
+  name                         = "allow-${azurerm_subnet.subnet.name}-ssh"
   priority                     = 100
   direction                    = "Inbound"
   access                       = "Allow"
@@ -128,7 +128,7 @@ resource "azurerm_network_security_rule" "example" {
   source_port_range            = "*"
   destination_port_range       = "22"
   source_address_prefix        = "*"
-  destination_address_prefixes = data.azurerm_subnet.dev-subnet1-data.address_prefixes
-  resource_group_name          = azurerm_resource_group.dev-rg.name
-  network_security_group_name  = azurerm_network_security_group.dev-subnet1-nsg.name
+  destination_address_prefixes = data.azurerm_subnet.subnet-data.address_prefixes
+  resource_group_name          = azurerm_resource_group.resource-group.name
+  network_security_group_name  = azurerm_network_security_group.subnet-nsg.name
 }
